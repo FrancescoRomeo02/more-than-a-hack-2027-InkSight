@@ -15,6 +15,11 @@ def runs(mask):
     return list(zip(np.where(d == 1)[0], np.where(d == -1)[0]))
 
 
+# Half-width (frames) of the centred difference used for PLAYER speeds. Position jitter of an
+# automatic tracker is amplified ~1/h times by the difference, so a larger h is more robust.
+PLAYER_SPEED_H = 12        # ~1 s; 2 (0.16 s) lost 0.04 AUC of the dead-ball model under jitter
+
+
 def _central_speed(xy, h=2):
     """Speed from a centred difference over +-h frames; NaN where either end is missing."""
     v = np.full(xy.shape[:-1], np.nan, np.float32)
@@ -55,7 +60,7 @@ def compute(atd):
     f["ball_to_line"] = np.abs(out).astype(np.float32)
 
     # collective player speed: players walk during stoppages
-    ps = _central_speed(players)                                        # (N, 46)
+    ps = _central_speed(players, PLAYER_SPEED_H)                        # (N, 46)
     ps = np.where(ps > 12, np.nan, ps)                                  # identity switches
     with np.errstate(all="ignore"):
         mean_speed = np.nanmean(ps, 1)

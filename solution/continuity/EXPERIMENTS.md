@@ -72,6 +72,27 @@ Gli script sono in `scripts/`, i risultati grezzi in `results/`. Per rilanciarli
 **Conclusione.** Tenuta: guadagno piccolo sullo spellF1 (dentro il rumore) ma coerente, e soprattutto la calibrazione ora sceglie i parametri sulla peggiore di **tre** partite e il modello finale è allenato su tre. `calibrate.prepare` usa (1, 2, 3) di default; log → `calibration_v6.jsonl`.
 **Nota pratica.** Sul Mac del team la VM chiude i processi in background a fine comando: gli script appaiati riprendono dal JSONL e vanno lanciati a blocchi.
 
+## 6. Robustezza al tracking dei giocatori tipo ATD (17/11) — `scripts/robust_stress.py`, `scripts/robust_paired.py`
+
+**Domanda.** Su Metrica la palla ferma è all'84%, sulla finestra pubblica al ~30%. Quanto pesa la qualità del tracking dei GIOCATORI (rumore di posizione, giocatori non visibili)? Su Metrica i 22 giocatori ci sono sempre e le posizioni sono pulite; le velocità erano calcolate su 0.16 s (h = 2), che amplifica il rumore ~6 volte.
+**Prova (solo Metrica).** Partita di test con giocatori perturbati: rumore gaussiano sigma e una frazione di posizioni mancanti a blocchi lunghi (mediana 10 s). Livelli: clean (0, 0), mid (0.15 m, 10%), hard (0.30 m, 20%). I livelli veri dell'ATD non li conosciamo: è uno stress test.
+**AUC fuori partita del classificatore di palla ferma** (media delle 3 partite; recall di D tra parentesi, `results/robust_stress.jsonl`):
+
+| | clean | mid | hard |
+|---|---|---|---|
+| attuale: h = 2, allenato su partite pulite | 0.909 (0.85) | 0.906 | **0.870 (0.62–0.84)** |
+| h = 12 (~1 s) | 0.911 | 0.906 | 0.907 |
+| allenamento aumentato (pulito + mid + hard) | 0.917 | 0.917 | 0.912 |
+| **h = 12 + allenamento aumentato** | **0.918** | **0.915** | **0.915** |
+
+**spellF1 appaiato** (19 configurazioni, partite 1-3, `results/robust_paired.jsonl`), vecchio contro nuovo:
+- partite pulite: 0.371 → 0.370 (−0.0004, invariato; migliore partita peggiore 0.410 → 0.410);
+- partite con giocatori "hard": **0.270 → 0.312 (+0.043), meglio in 19/19**; migliore partita peggiore 0.295 → 0.331; per partita +0.067 / +0.036 / +0.024.
+- Perdita passando da pulito a hard: −0.101 col vecchio, −0.058 col nuovo (il resto viene dal giocatore più vicino alla palla, non toccato).
+
+**Conclusione.** Tenuto: nessun costo sul pulito, molta robustezza se l'ATD ha rumore o giocatori mancanti. `features.PLAYER_SPEED_H = 12`; `deadball.AUG_LEVELS` = (0.15, 0.10), (0.30, 0.20) con `SUBSAMPLE` scalato; `metrica.atd_like_players`. Log calibrazione → `calibration_v7.jsonl`.
+**Da verificare dal team** (Claude non vede i dati BAR-ATH): se nell'ATD le velocità dei giocatori a palla ferma e il numero di giocatori visibili sono lontani da Metrica, questo è il pezzo giusto; se sono simili, la differenza 84% → 30% ha un'altra causa.
+
 ---
 
 ## Idee non ancora provate

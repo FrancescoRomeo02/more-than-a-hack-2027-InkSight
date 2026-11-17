@@ -101,8 +101,8 @@ def frame_features(f, atd):
     ps = f["players_speed"]
     med = np.nanmedian(ps) if np.any(np.isfinite(ps)) else 1.0
     med = med if med > 0 else 1.0
-    from .features import _central_speed
-    sp = _central_speed(players)
+    from . import features as _feat
+    sp = _feat._central_speed(players, _feat.PLAYER_SPEED_H)
     sp = np.where(sp > 12, np.nan, sp)
     with np.errstate(all="ignore"):
         p90 = np.nanpercentile(np.where(np.isnan(sp), np.nan, sp), 90, axis=1) / med
@@ -191,11 +191,27 @@ def dead_logit(f, atd, m):
     return predict_logit(m, frame_features(f, atd))
 
 
-def training_set(prepared):
-    """Per game (X, y) on the frames with a label (gt != X)."""
+# Training augmentation: every Metrica game is used clean AND with ATD-like player tracking at these
+# (jitter sigma in m, fraction of player positions missing). Stress test on Metrica (EXPERIMENTS.md
+# §6): trained on clean games only, AUC fell 0.909 -> 0.870 and D recall 0.85 -> 0.62 on the hard
+# level; with the augmentation it stays at 0.915-0.918 on every level, clean included.
+AUG_LEVELS = ((0.15, 0.10), (0.30, 0.20))
+SUBSAMPLE = 4 * (1 + len(AUG_LEVELS))     # same number of training rows as without augmentation
+
+
+def training_set(prepared, augment=True):
+    """Per game (X, y) on the frames with a label (gt != X); with augment, the clean frames
+    followed by the same frames with perturbed players (metrica.atd_like_players)."""
+    from . import features as _feat, metrica as _metrica
     out = []
-    for G, f, gt, *_ in prepared:
-        X = frame_features(f, G)
+    for gi, (G, f, gt, *_) in enumerate(prepared):
         keep = gt != "X"
-        out.append((X[keep], (gt[keep] == "D").astype(int)))
+        y = (gt[keep] == "D").astype(int)
+        Xs, ys = [frame_features(f, G)[keep]], [y]
+        for li, (sigma, drop) in enumerate(AUG_LEVELS if augment else ()):
+            rng = np.random.default_rng([1000 + gi, li])
+            Gp = dict(G, players=_metrica.atd_like_players(G["players"], rng, sigma, drop))
+            Xs.append(frame_features(_feat.compute(Gp), Gp)[keep])
+            ys.append(y)
+        out.append((np.concatenate(Xs), np.concatenate(ys)))
     return out

@@ -221,6 +221,28 @@ def atd_like_ball(ball, period, rng, target=0.41, median_gap=268):
     return drop_ball_like_atd(fill_native_gaps(ball, period), rng, target, median_gap)
 
 
+def atd_like_players(players, rng, sigma=0.15, drop=0.10, median_s=10.0):
+    """Players as an automatic tracker might give them: Gaussian position jitter (sigma metres,
+    per frame) and a fraction `drop` of the on-pitch positions missing in long blocks (lognormal,
+    median `median_s` seconds). Used only to AUGMENT the dead-ball training set: the real levels
+    in the ATD are unknown, so the classifier is trained on several (deadball.AUG_LEVELS)."""
+    P = players.copy()
+    if sigma > 0:
+        P += rng.normal(0, sigma, P.shape).astype(np.float32)
+    if drop > 0:
+        on = ~np.isnan(P[:, :, 0])
+        miss = np.zeros(on.shape, bool)
+        n, target, got = len(P), drop * on.sum(), 0
+        while got < target:
+            k = int(rng.integers(P.shape[1]))
+            ln = int(rng.lognormal(np.log(median_s * 25), 0.8))
+            a = int(rng.integers(0, max(n - ln, 1)))
+            got += int((on[a:a + ln, k] & ~miss[a:a + ln, k]).sum())
+            miss[a:a + ln, k] = True
+        P[miss] = np.nan
+    return P
+
+
 def drop_ball_like_atd(ball, rng, target=0.41, median_gap=268):
     """Remove the ball in long blocks so the clean sample data resembles the automatic
     tracking (in BAR-ATH the ball is missing ~41% of graded frames, in few long gaps)."""

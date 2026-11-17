@@ -69,7 +69,7 @@ def prepare(games=(1, 2, 3), seed=0, ball_mode="atd_like", gap_model=False, dead
         for i, (G, f, gt) in enumerate(out):
             X = np.concatenate([s[0] for j, s in enumerate(sets) if j != i])
             y = np.concatenate([s[1] for j, s in enumerate(sets) if j != i])
-            dl[i] = deadball.dead_logit(f, G, deadball.fit(X, y))
+            dl[i] = deadball.dead_logit(f, G, deadball.fit(X, y, subsample=deadball.SUBSAMPLE))
     tags = [metrica.synthetic_tags(G, rng) for G, _, _ in out]
     return [(G, f, gt, l, d, t) for (G, f, gt), l, d, t in zip(out, gl, dl, tags)]
 
@@ -88,7 +88,8 @@ def blocks_of(gt):
 def fit_dead_model(prepared):
     """Final dead-ball classifier, fitted on ALL the prepared Metrica games."""
     sets = deadball.training_set(prepared)
-    return deadball.fit(np.concatenate([s[0] for s in sets]), np.concatenate([s[1] for s in sets]))
+    return deadball.fit(np.concatenate([s[0] for s in sets]), np.concatenate([s[1] for s in sets]),
+                        subsample=deadball.SUBSAMPLE)
 
 
 def score(prepared, params, cfg):
