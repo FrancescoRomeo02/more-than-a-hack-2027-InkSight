@@ -29,7 +29,7 @@ python evaluation/validate_submission.py evaluation/results/<team_name>.csv
 ### Su Google Colab
 Ogni notebook gira in un runtime separato: quello che deve passare da uno all'altro sta su Drive, in `DRIVE_DIR` (default `MyDrive/mtah2027`):
 - `data/` (da caricare a mano), `cache/` (ATD parsato, dati Metrica, log della calibrazione), `params.json` e `deadball_model.pkl` (scritti da 02, letti da 03: stessa versione di scikit-learn).
-- La calibrazione (02) scrive ogni configurazione in `cache/calibration_v5.jsonl`: se il runtime cade, rieseguendo riparte da dove era.
+- La calibrazione (02) scrive ogni configurazione in `cache/calibration_v6.jsonl`: se il runtime cade, rieseguendo riparte da dove era.
 - Il notebook 03 si ferma con un errore se `params.json` non c'è.
 - Colab clona la branch `team-solution` da GitHub: le modifiche al codice devono essere pushate.
 - I notebook 02 e 03 installano `solution/requirements.txt` all'avvio. Se pip cambia una libreria già caricata, il runtime si riavvia da solo una volta: basta rieseguire il notebook dall'inizio.

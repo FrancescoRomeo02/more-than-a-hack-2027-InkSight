@@ -32,8 +32,11 @@ SEARCH = {  # (low, high) sampled uniformly
 DECODE_SEARCH = {"switch": (2.0, 15.0), "min_pos": (5, 75), "min_dead": (10, 150)}
 
 
-def prepare(games=(1, 2), seed=0, ball_mode="atd_like", gap_model=False, dead_model=True):
+def prepare(games=(1, 2, 3), seed=0, ball_mode="atd_like", gap_model=False, dead_model=True):
     """[(G, f, gt, gap_logit, dead_logit, synthetic_tags)] per game.
+
+    games: Metrica Sample Games 1-2 (CSV) and 3 (EPTS, metrica._load_epts). With three games every
+    leave-one-game-out classifier is trained on two games, and best_of takes the worst of three.
 
     ball_mode: "atd_like" (default) fills the native Metrica gaps and cuts long random gaps, so a
     missing ball is no longer a proxy for a dead ball (as in the automatic tracking);

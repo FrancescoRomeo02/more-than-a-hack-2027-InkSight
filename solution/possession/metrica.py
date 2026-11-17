@@ -19,10 +19,22 @@ PITCH = (105.0, 68.0)
 DIR = os.path.join(CACHE_DIR, "metrica")
 
 
-def download(games=(1, 2)):
+# Sample Game 3 ships in the FIFA EPTS format (tracking txt + metadata xml + events json)
+EPTS_GAMES = (3,)
+EPTS_FILES = ("tracking.txt", "metadata.xml", "events.json")
+EPTS_URL = ("https://raw.githubusercontent.com/metrica-sports/sample-data/master/data/"
+            "Sample_Game_{g}/Sample_Game_{g}_{f}")
+
+
+def download(games=(1, 2, 3)):
     os.makedirs(DIR, exist_ok=True)
     for g in games:
-        for f in FILES:
+        for f in (EPTS_FILES if g in EPTS_GAMES else FILES):
+            if g in EPTS_GAMES:
+                path = os.path.join(DIR, f"Sample_Game_{g}_{f}")
+                if not os.path.exists(path):
+                    urllib.request.urlretrieve(EPTS_URL.format(g=g, f=f), path)
+                continue
             path = os.path.join(DIR, f"Sample_Game_{g}_{f}.csv")
             if not os.path.exists(path):
                 urllib.request.urlretrieve(URL.format(g=g, f=f), path)
@@ -40,8 +52,86 @@ def _tracking(path):
     return raw["Period"].to_numpy(), np.stack(xy, 1), ball
 
 
+def _load_epts(g):
+    """Sample Game 3 (EPTS): same dict as the CSV games. Player columns = every player of the
+    squad (substitutes NaN while off the pitch), mapped per frame range through the
+    DataFormatSpecifications of the metadata; events converted to the CSV columns."""
+    import json
+    import xml.etree.ElementTree as ET
+    p = lambda f: os.path.join(DIR, f"Sample_Game_{g}_{f}")
+    root = ET.parse(p("metadata.xml")).getroot()
+    home_id = root.find(".//Score").get("idLocalTeam")
+    players = [(pl.get("id"), pl.get("teamId")) for pl in root.iter("Player")]
+    col = {pid: i for i, (pid, _) in enumerate(players)}
+    team = np.array([HOME if t == home_id else AWAY for _, t in players], np.int8)
+    chan = {c.get("id"): c.get("playerId") for c in root.iter("PlayerChannel")}
+    gp = {e.findtext("Name"): e.findtext("Value") for e in root.iter("ProviderParameter")}
+    halves = [(int(gp["first_half_start"]), int(gp["first_half_end"])),
+              (int(gp["second_half_start"]), int(gp["second_half_end"]))]
+    specs = []
+    for spec in root.iter("DataFormatSpecification"):
+        refs = [r.get("playerChannelId") for r in spec.iter("PlayerChannelRef")]
+        order = [col[chan[r]] for r in refs[0::2]]            # x channel of each slot
+        specs.append((int(spec.get("startFrame")), int(spec.get("endFrame")), order))
+
+    cache = p("parsed.npz")
+    if os.path.exists(cache):
+        z = np.load(cache)
+        frames, xy, ball = z["frames"], z["xy"], z["ball"]
+    else:
+        fr_l, xy_l, ball_l = [], [], []
+        with open(p("tracking.txt")) as fh:
+            for line in fh:
+                fr, pl, b = line.rstrip("\n").split(":")
+                fr_l.append(int(fr))
+                xy_l.append(np.array(pl.replace(";", ",").split(","), np.float32))
+                ball_l.append(np.array(b.split(","), np.float32))
+        frames = np.array(fr_l)
+        width = max(len(v) for v in xy_l)
+        xy = np.full((len(xy_l), width), np.nan, np.float32)
+        for i, v in enumerate(xy_l):
+            xy[i, :len(v)] = v
+        ball = np.stack(ball_l)
+        np.savez_compressed(cache, frames=frames, xy=xy, ball=ball)
+
+    first, last = halves[0][0], halves[-1][1]
+    n = last - first + 1
+    out = np.full((n, len(players), 2), np.nan, np.float32)
+    bl = np.full((n, 2), np.nan, np.float32)
+    idx = frames - first
+    keep = (idx >= 0) & (idx < n)
+    bl[idx[keep]] = ball[keep]
+    for a, b, order in specs:
+        sel = keep & (frames >= a) & (frames <= b)
+        slots = xy[sel].reshape(sel.sum(), -1, 2)
+        for k, c in enumerate(order):
+            out[idx[sel], c] = slots[:, k]
+    per = np.zeros(n, np.int64)
+    for k, (a, b) in enumerate(halves, 1):
+        per[a - first:b - first + 1] = k
+    scale = np.array(PITCH, np.float32)
+
+    ev = json.load(open(p("events.json")))["data"]
+    rows = []
+    for e in ev:
+        st = e.get("subtypes")
+        st = [] if st is None else (st if isinstance(st, list) else [st])
+        rows.append({"Team": "Home" if e["team"]["id"] == home_id else "Away",
+                     "Type": e["type"]["name"],
+                     "Subtype": "-".join(x["name"] for x in st) if st else np.nan,
+                     "Period": e["period"],
+                     "Start Frame": e["start"]["frame"] - first + 1,     # 1-based like the CSV
+                     "End Frame": (e["end"]["frame"] - first + 1) if e["end"]["frame"] else 0,
+                     "Start X": e["start"]["x"], "Start Y": e["start"]["y"],
+                     "End X": e["end"]["x"], "End Y": e["end"]["y"]})
+    return {"ball": bl * scale, "players": out * scale, "team": team, "n_frames": n,
+            "period": per, "events": pd.DataFrame(rows)}
+
+
 def load_game(g):
     download((g,))
+    if g in EPTS_GAMES:
+        return _load_epts(g)
     p = lambda f: os.path.join(DIR, f"Sample_Game_{g}_{f}.csv")
     per, ph, ball = _tracking(p(FILES[0]))
     _, pa, _ = _tracking(p(FILES[1]))

@@ -60,6 +60,18 @@ Gli script sono in `scripts/`, i risultati grezzi in `results/`. Per rilanciarli
 **Numeri.** 100 configurazioni appaiate (`results/setpieces_paired.jsonl`): spellF1 medio +0.018, migliorato in 100/100; partita peggiore, migliore configurazione 0.407 → 0.412 (dentro il rumore). Il guadagno cresce un po' con `k_sp_dead`.
 **Conclusione.** Tenuto. Su Metrica il margine è piccolo perché la palla ferma è già all'84%; l'obiettivo è l'ATD, dove è al 33%. Da verificare sulla finestra pubblica dopo la calibrazione v5.
 
+## 5. Terza partita Metrica: Sample Game 3 in formato EPTS (17/11) — `scripts/db_game3.py`, `scripts/db_game3_paired.py`
+
+**Domanda.** Una terza partita aiuta il classificatore di palla ferma a generalizzare?
+**Fatto.** `metrica._load_epts`: tracking txt + metadata xml + eventi json convertiti nello stesso formato delle partite CSV (35 colonne giocatore, riserve NaN finché non entrano; eventi con le colonne del CSV). Etichette dagli eventi: H 0.39, A 0.37, D 0.24, 477 segmenti. Palla mancante nel 32% dei frame (nativa, prima di atd_like).
+**Numeri.**
+- AUC fuori partita del classificatore, allenato su una partita contro due (`results/db_game3.json`): test 1: 0.904 / 0.892 → **0.915**; test 2: 0.900 / 0.878 → **0.909**; test 3: 0.901 / 0.874 → **0.904**. Con due partite di allenamento è sempre meglio della migliore partita singola; recall di D +0.02–0.04 a parità di precisione.
+- La Sample Game 3 si comporta come le altre: AUC 0.90 allenando sulle altre due.
+- 40 configurazioni appaiate sulle partite 1-2, stessa palla e stessi tag (`results/db_game3_paired.jsonl`): spellF1 medio 0.363 → 0.366 (+0.004), meglio in 29/40; migliore partita peggiore 0.434 → 0.435; sulle 10 migliori +0.002 (da −0.004 a +0.008).
+
+**Conclusione.** Tenuta: guadagno piccolo sullo spellF1 (dentro il rumore) ma coerente, e soprattutto la calibrazione ora sceglie i parametri sulla peggiore di **tre** partite e il modello finale è allenato su tre. `calibrate.prepare` usa (1, 2, 3) di default; log → `calibration_v6.jsonl`.
+**Nota pratica.** Sul Mac del team la VM chiude i processi in background a fine comando: gli script appaiati riprendono dal JSONL e vanno lanciati a blocchi.
+
 ---
 
 ## Idee non ancora provate
